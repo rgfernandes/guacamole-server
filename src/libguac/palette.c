@@ -40,55 +40,63 @@ guac_palette* guac_palette_alloc(cairo_surface_t* surface) {
     /* Allocate palette */
     guac_palette* palette = (guac_palette*) malloc(sizeof(guac_palette));
     memset(palette, 0, sizeof(guac_palette));
+    uint32_t oldcolor = 0L;
+    int is_first_time = 1;
 
     for (y=0; y<height; y++) {
         for (x=0; x<width; x++) {
 
-            /* Get pixel color */
-            int color = ((uint32_t*) data)[x] & 0xFFFFFF;
+            if(oldcolor != ((uint32_t*) data)[x] || is_first_time) {
 
-            /* Calculate hash code */
-            int hash = ((color & 0xFFF000) >> 12) ^ (color & 0xFFF);
+                oldcolor = ((uint32_t*) data)[x];
+                is_first_time = 0;
 
-            guac_palette_entry* entry;
+                /* Get pixel color */
+                int color = ((uint32_t*) data)[x] & 0xFFFFFF;
 
-            /* Search for open palette entry */
-            for (;;) {
-                
-                entry = &(palette->entries[hash]);
+                /* Calculate hash code */
+                int hash = ((color & 0xFFF000) >> 12) ^ (color & 0xFFF);
 
-                /* If we've found a free space, use it */
-                if (entry->index == 0) {
+                guac_palette_entry* entry;
 
-                    png_color* c;
+                /* Search for open palette entry */
+                for (;;) {
 
-                    /* Stop if already at capacity */
-                    if (palette->size == 256) {
-                        guac_palette_free(palette);
-                        return NULL;
+                    entry = &(palette->entries[hash]);
+
+                    /* If we've found a free space, use it */
+                    if (entry->index == 0) {
+
+                        png_color* c;
+
+                        /* Stop if already at capacity */
+                        if (palette->size == 256) {
+                            guac_palette_free(palette);
+                            return NULL;
+                        }
+
+                        /* Store in palette */
+                        c = &(palette->colors[palette->size]);
+                        c->blue  = (color      ) & 0xFF;
+                        c->green = (color >> 8 ) & 0xFF;
+                        c->red   = (color >> 16) & 0xFF;
+
+                        /* Add color to map */
+                        entry->index = ++palette->size;
+                        entry->color = color;
+
+                        break;
+
                     }
 
-                    /* Store in palette */
-                    c = &(palette->colors[palette->size]);
-                    c->blue  = (color      ) & 0xFF;
-                    c->green = (color >> 8 ) & 0xFF;
-                    c->red   = (color >> 16) & 0xFF;
+                    /* Otherwise, if already stored here, done */
+                    if (entry->color == color)
+                        break;
 
-                    /* Add color to map */
-                    entry->index = ++palette->size;
-                    entry->color = color;
-
-                    break;
+                    /* Otherwise, collision. Move on to another bucket */
+                    hash = (hash+1) & 0xFFF;
 
                 }
-
-                /* Otherwise, if already stored here, done */
-                if (entry->color == color)
-                    break;
-
-                /* Otherwise, collision. Move on to another bucket */
-                hash = (hash+1) & 0xFFF;
-
             }
         }
 
