@@ -265,6 +265,71 @@ static void guac_png_flush_handler(png_structp png) {
 
 }
 
+void copy_orig(png_byte **png_rows, int height, int width, unsigned char* data, guac_palette* palette, int stride)
+{
+    int x, y;
+    for (y=0; y<height; y++) {
+
+        /* Allocate new PNG row */
+        png_byte* row = png_rows[y];
+
+        /* Copy data from surface into current row */
+        for (x=0; x<width; x++) {
+
+            /* Get pixel color */
+            int color = ((uint32_t*) data)[x] & 0xFFFFFF;
+
+            /* Set index in row */
+            row[x] = guac_palette_find(palette, color);
+
+        }
+
+        /* Advance to next data row */
+        data += stride;
+
+    }
+}
+
+void copy_new(png_byte **png_rows, int height, int width, unsigned char* data, guac_palette* palette, int stride)
+{
+    int x, y;
+    uint32_t oldpixel;
+    png_byte oldcolor;
+    for (y=0; y<height; y++) {
+
+        /* Allocate new PNG row */
+        png_byte* row = png_rows[y];
+
+        /* Copy data from surface into current row */
+
+        /* Calculate the first color */
+        oldpixel = ((uint32_t*) data)[0];
+        int color = ((uint32_t*) data)[0] & 0xFFFFFF;
+        oldcolor = guac_palette_find(palette, color);
+        row[0] = oldcolor;
+
+        for (x=1; x<width; x++) {
+            if(oldpixel == ((uint32_t*) data)[x]) {
+                row[x] = oldcolor;
+            }else{
+                oldpixel = ((uint32_t*) data)[x];
+
+                /* Get pixel color */
+                int color = ((uint32_t*) data)[x] & 0xFFFFFF;
+
+                /* Set index in row */
+                oldcolor = guac_palette_find(palette, color);
+                row[x] = oldcolor;
+            }
+
+        }
+
+        /* Advance to next data row */
+        data += stride;
+
+    }
+}
+
 int guac_png_write(guac_socket* socket, guac_stream* stream,
         cairo_surface_t* surface) {
 
@@ -273,7 +338,7 @@ int guac_png_write(guac_socket* socket, guac_stream* stream,
     png_byte** png_rows;
     int bpp;
 
-    int x, y;
+    int /*x,*/ y;
 
     guac_png_write_state write_state;
 
@@ -343,42 +408,14 @@ int guac_png_write(guac_socket* socket, guac_stream* stream,
 
     /* Copy data from surface into PNG data */
     png_rows = (png_byte**) malloc(sizeof(png_byte*) * height);
-    uint32_t oldpixel;
-    png_byte oldcolor;
     for (y=0; y<height; y++) {
 
         /* Allocate new PNG row */
         png_byte* row = (png_byte*) malloc(sizeof(png_byte) * width);
         png_rows[y] = row;
-
-        /* Copy data from surface into current row */
-
-        /* Calculate the first color */
-        oldpixel = ((uint32_t*) data)[0];
-        int color = ((uint32_t*) data)[0] & 0xFFFFFF;
-        oldcolor = guac_palette_find(palette, color);
-        row[0] = oldcolor;
-
-        for (x=1; x<width; x++) {
-            if(oldpixel == ((uint32_t*) data)[x]) {
-                row[x] = oldcolor;
-            }else{
-                oldpixel = ((uint32_t*) data)[x];
-
-                /* Get pixel color */
-                int color = ((uint32_t*) data)[x] & 0xFFFFFF;
-
-                /* Set index in row */
-                oldcolor = guac_palette_find(palette, color);
-                row[x] = oldcolor;
-            }
-
-        }
-
-        /* Advance to next data row */
-        data += stride;
-
     }
+    copy_orig(png_rows, height, width, data, palette, stride);
+    copy_new(png_rows, height, width, data, palette, stride);
 
     /* Write image info */
     png_set_IHDR(
